@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions name="CampusPayGatewayService"
+             targetNamespace="http://campuspay.example.com/gateway/wsdl"
+             xmlns:tns="http://campuspay.example.com/gateway/wsdl"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns="http://schemas.xmlsoap.org/wsdl/">
+
+  <!-- ============================================================ -->
+  <!-- 1. TYPES - XSD schema for the chargePayment request/response  -->
+  <!-- ============================================================ -->
+  <types>
+    <xsd:schema targetNamespace="http://campuspay.example.com/gateway/wsdl"
+                xmlns:tns="http://campuspay.example.com/gateway/wsdl">
+
+      <!-- Request payload -->
+      <xsd:element name="ChargePaymentRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="merchantOrderId" type="xsd:string"/>
+            <xsd:element name="studentId" type="xsd:string"/>
+            <xsd:element name="amount" type="xsd:decimal"/>
+            <xsd:element name="currency" type="xsd:string" default="INR"/>
+            <xsd:element name="paymentMethod" type="xsd:string"/>
+            <xsd:element name="cardToken" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Success response payload -->
+      <xsd:element name="ChargePaymentResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="transactionId" type="xsd:string"/>
+            <xsd:element name="merchantOrderId" type="xsd:string"/>
+            <xsd:element name="status" type="xsd:string"/>
+            <xsd:element name="amountCharged" type="xsd:decimal"/>
+            <xsd:element name="currency" type="xsd:string"/>
+            <xsd:element name="authCode" type="xsd:string"/>
+            <xsd:element name="timestamp" type="xsd:dateTime"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Fault detail payload -->
+      <xsd:element name="PaymentFaultDetail">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="faultCode" type="xsd:string"/>
+            <xsd:element name="faultReason" type="xsd:string"/>
+            <xsd:element name="merchantOrderId" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Security header: partner credentials -->
+      <xsd:element name="AuthHeader">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="merchantId" type="xsd:string"/>
+            <xsd:element name="apiKey" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+    </xsd:schema>
+  </types>
+
+  <!-- ============================================================ -->
+  <!-- 2. MESSAGES - abstract, typed messages built from the types   -->
+  <!-- ============================================================ -->
+  <message name="ChargePaymentRequestMessage">
+    <part name="header" element="tns:AuthHeader"/>
+    <part name="body" element="tns:ChargePaymentRequest"/>
+  </message>
+
+  <message name="ChargePaymentResponseMessage">
+    <part name="body" element="tns:ChargePaymentResponse"/>
+  </message>
+
+  <message name="ChargePaymentFaultMessage">
+    <part name="fault" element="tns:PaymentFaultDetail"/>
+  </message>
+
+  <!-- ============================================================ -->
+  <!-- 3. PORTTYPE - the abstract operation                          -->
+  <!-- ============================================================ -->
+  <portType name="CampusPayGatewayPortType">
+    <operation name="chargePayment">
+      <input message="tns:ChargePaymentRequestMessage"/>
+      <output message="tns:ChargePaymentResponseMessage"/>
+      <fault name="PaymentFault" message="tns:ChargePaymentFaultMessage"/>
+    </operation>
+  </portType>
+
+  <!-- ============================================================ -->
+  <!-- 4. BINDING - SOAP 1.1 over HTTP, document/literal              -->
+  <!-- ============================================================ -->
+  <binding name="CampusPayGatewayBinding" type="tns:CampusPayGatewayPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+    <operation name="chargePayment">
+      <soap:operation soapAction="http://campuspay.example.com/gateway/chargePayment" style="document"/>
+      <input>
+        <soap:header message="tns:ChargePaymentRequestMessage" part="header" use="literal"/>
+        <soap:body use="literal" parts="body"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="PaymentFault">
+        <soap:fault name="PaymentFault" use="literal"/>
+      </fault>
+    </operation>
+  </binding>
+
+  <!-- ============================================================ -->
+  <!-- 5. SERVICE / PORT - the concrete, real-looking endpoint        -->
+  <!-- ============================================================ -->
+  <service name="CampusPayGatewayService">
+    <port name="CampusPayGatewayPort" binding="tns:CampusPayGatewayBinding">
+      <soap:address location="https://api.campuspay.example.com/gateway/v1/payments"/>
+    </port>
+  </service>
+
+</definitions>

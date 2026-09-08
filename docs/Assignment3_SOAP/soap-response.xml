@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                   xmlns:cp="http://campuspay.example.com/gateway/wsdl">
+  <soapenv:Body>
+    <cp:ChargePaymentResponse>
+      <cp:transactionId>TXN-88213377</cp:transactionId>
+      <cp:merchantOrderId>ORD-100234</cp:merchantOrderId>
+      <cp:status>CAPTURED</cp:status>
+      <cp:amountCharged>248.50</cp:amountCharged>
+      <cp:currency>INR</cp:currency>
+      <cp:authCode>AUTH-556291</cp:authCode>
+      <cp:timestamp>2026-08-23T10:15:42Z</cp:timestamp>
+    </cp:ChargePaymentResponse>
+  </soapenv:Body>
+</soapenv:Envelope>

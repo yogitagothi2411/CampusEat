@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                   xmlns:cp="http://campuspay.example.com/gateway/wsdl">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>soapenv:Client</faultcode>
+      <faultstring>Payment declined by issuing bank</faultstring>
+      <detail>
+        <cp:PaymentFaultDetail>
+          <cp:faultCode>card_declined</cp:faultCode>
+          <cp:faultReason>The issuing bank declined the transaction due to insufficient funds.</cp:faultReason>
+          <cp:merchantOrderId>ORD-100234</cp:merchantOrderId>
+        </cp:PaymentFaultDetail>
+      </detail>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>

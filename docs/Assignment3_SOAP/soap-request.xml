@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                   xmlns:cp="http://campuspay.example.com/gateway/wsdl">
+  <soapenv:Header>
+    <cp:AuthHeader>
+      <cp:merchantId>CAMPUSEATS-MERCHANT-0042</cp:merchantId>
+      <cp:apiKey>ck_live_9f8a2b7c1d4e6f00aa11bb22cc33dd44</cp:apiKey>
+    </cp:AuthHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <cp:ChargePaymentRequest>
+      <cp:merchantOrderId>ORD-100234</cp:merchantOrderId>
+      <cp:studentId>STU-778812</cp:studentId>
+      <cp:amount>248.50</cp:amount>
+      <cp:currency>INR</cp:currency>
+      <cp:paymentMethod>CARD</cp:paymentMethod>
+      <cp:cardToken>tok_1a2b3c4d5e6f7g8h</cp:cardToken>
+    </cp:ChargePaymentRequest>
+  </soapenv:Body>
+</soapenv:Envelope>
