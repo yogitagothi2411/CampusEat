@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /home/claude/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/claude/work/extracted/CampusEat/docs/assignment-4
+collecting ... collected 6 items
+
+tests/test_app.py::test_create_order_succeeds PASSED                     [ 16%]
+tests/test_app.py::test_idempotent_repeat_returns_original PASSED        [ 33%]
+tests/test_app.py::test_malformed_body_returns_400 PASSED                [ 50%]
+tests/test_app.py::test_unknown_order_returns_404 PASSED                 [ 66%]
+tests/test_app.py::test_cancel_conflict_returns_409 PASSED               [ 83%]
+tests/test_app.py::test_payment_unavailable_falls_back_to_503 PASSED     [100%]
+
+============================== 6 passed in 0.16s ===============================

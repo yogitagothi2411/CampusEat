@@ -1,0 +1,235 @@
+openapi: 3.0.3
+info:
+  title: CampusEats Orders Service
+  description: >
+    REST rebuild of the Assignment 2 ORDERS CONTRACT (placeOrder, getOrder,
+    cancelOrder) as resource-oriented HTTP endpoints. See NOTES.md for the
+    mapping from the old SOAP-style operations to these resources.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000
+    description: Local dev server
+
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create an order (placeOrder)
+      description: >
+        Turns a student's selected items into a confirmed order: validates
+        the delivery address, checks item availability/price, charges
+        payment, and returns the created order. Supports an
+        Idempotency-Key header so a retried request returns the original
+        order instead of creating a duplicate.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+          description: Client-supplied key; a repeat with the same key returns the original order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+      responses:
+        '201':
+          description: Order created (or the original order, if this Idempotency-Key was seen before)
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the newly created order, e.g. /orders/42
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Malformed request body (missing/invalid fields, or an empty cart)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Valid request rejected by a domain rule (invalid address, item unavailable, or payment declined)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The downstream Payments service is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+    get:
+      operationId: listOrders
+      summary: List orders, filtered by student and/or status
+      parameters:
+        - in: query
+          name: studentId
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [PENDING, PLACED, CANCELLED]
+      responses:
+        '200':
+          description: Matching orders (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '400':
+          description: Invalid 'status' filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      summary: Get a single order (getOrder)
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: No order with that id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /orders/{orderId}/cancellation:
+    post:
+      operationId: cancelOrder
+      summary: Cancel an order (cancelOrder) -- state-changing sub-resource
+      description: >
+        Moves an order from PENDING/PLACED to CANCELLED. Does not delete
+        the order (it stays queryable), matching the CANCELLED status
+        already present in the Assignment 2 schema.
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: No order with that id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Order is already CANCELLED and cannot be cancelled again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+components:
+  schemas:
+    OrderItemInput:
+      type: object
+      required: [itemId, quantity]
+      properties:
+        itemId:
+          type: integer
+        quantity:
+          type: integer
+          minimum: 1
+
+    OrderCreateRequest:
+      type: object
+      required: [studentId, items, addressId, paymentMethod]
+      properties:
+        studentId:
+          type: string
+          example: STU-778812
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItemInput'
+        addressId:
+          type: integer
+        paymentMethod:
+          type: string
+          enum: [CARD, UPI, WALLET, COD]
+
+    OrderItem:
+      type: object
+      properties:
+        itemId:
+          type: integer
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+          format: float
+
+    Order:
+      type: object
+      properties:
+        orderId:
+          type: integer
+        studentId:
+          type: string
+        addressId:
+          type: integer
+        paymentMethod:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PLACED, CANCELLED]
+        total:
+          type: number
+          format: float
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        createdAt:
+          type: string
+          format: date-time
+
+    Problem:
+      type: object
+      description: Single error shape used by every endpoint (RFC-7807 style).
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

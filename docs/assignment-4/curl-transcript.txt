@@ -1,0 +1,164 @@
+CampusEats Orders Service -- curl transcript (real run, both servers live)
+Orders service: http://localhost:5000    Payments stub: http://localhost:5001
+Run with: PAYMENTS_URL=http://localhost:5001 python3 app.py   (separately: python3 payments_stub.py)
+
+===============================================================
+1. Successful create -- 201 Created + Location header
+===============================================================
+$ curl -i -X POST http://localhost:5000/orders \
+    -H 'Content-Type: application/json' -H 'Idempotency-Key: order-req-001' \
+    -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":2}],"addressId":10,"paymentMethod":"CARD"}'
+
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 212
+Location: /orders/1
+Connection: close
+
+{"addressId":10,"createdAt":"2026-09-08T11:35:15.796028+00:00","items":[{"itemId":101,"quantity":2,"unitPrice":120.0}],"orderId":1,"paymentMethod":"CARD","status":"PLACED","studentId":"STU-778812","total":240.0}
+
+
+===============================================================
+2. Same request repeated, SAME Idempotency-Key -> original order returned, no duplicate created
+===============================================================
+$ curl -i -X POST http://localhost:5000/orders \
+    -H 'Content-Type: application/json' -H 'Idempotency-Key: order-req-001' \
+    -d '{...same body as above...}'
+
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 212
+Location: /orders/1
+Connection: close
+
+{"addressId":10,"createdAt":"2026-09-08T11:35:15.796028+00:00","items":[{"itemId":101,"quantity":2,"unitPrice":120.0}],"orderId":1,"paymentMethod":"CARD","status":"PLACED","studentId":"STU-778812","total":240.0}
+
+
+===============================================================
+3. Malformed body -- missing items/addressId/paymentMethod -> 400
+===============================================================
+$ curl -i -X POST http://localhost:5000/orders -H 'Content-Type: application/json' -d '{"studentId":"STU-778812"}'
+
+HTTP/1.1 400 BAD REQUEST
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 146
+Connection: close
+
+{"detail":"An order must contain at least one item.","status":400,"title":"Empty cart","type":"https://campuseats.example.com/errors/empty-cart"}
+
+
+===============================================================
+4. Missing resource -- GET unknown order -> 404
+===============================================================
+$ curl -i http://localhost:5000/orders/999999
+
+HTTP/1.1 404 NOT FOUND
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 144
+Connection: close
+
+{"detail":"Order 999999 does not exist.","status":404,"title":"Order not found","type":"https://campuseats.example.com/errors/order-not-found"}
+
+
+===============================================================
+5. State conflict -- cancel an order that is already cancelled -> 409
+===============================================================
+Cancel order 1 (currently PLACED):
+$ curl -i -X POST http://localhost:5000/orders/1/cancellation
+
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 215
+Connection: close
+
+{"addressId":10,"createdAt":"2026-09-08T11:35:15.796028+00:00","items":[{"itemId":101,"quantity":2,"unitPrice":120.0}],"orderId":1,"paymentMethod":"CARD","status":"CANCELLED","studentId":"STU-778812","total":240.0}
+
+
+Cancel it again -- already CANCELLED:
+$ curl -i -X POST http://localhost:5000/orders/1/cancellation
+
+HTTP/1.1 409 CONFLICT
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 179
+Connection: close
+
+{"detail":"Order 1 is 'CANCELLED' and can no longer be cancelled.","status":409,"title":"Order cannot be cancelled","type":"https://campuseats.example.com/errors/order-conflict"}
+
+
+===============================================================
+6. Domain rejection -- item unavailable (itemId 103 is always out of stock) -> 422
+===============================================================
+$ curl -i -X POST http://localhost:5000/orders ... items:[{"itemId":103,"quantity":1}] ...
+
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 142
+Connection: close
+
+{"detail":"Item 103 is unavailable.","status":422,"title":"Item unavailable","type":"https://campuseats.example.com/errors/item-unavailable"}
+
+
+===============================================================
+7. Part D fallback -- Payments unreachable/failing after retries -> 503
+   (itemId 104 is priced at 500, which payments_stub.py always answers
+   with a 503 for, to exercise the retry+backoff+fallback path)
+===============================================================
+$ curl -i -X POST http://localhost:5000/orders ... items:[{"itemId":104,"quantity":1}] ...
+
+[re-run below -- the first attempt in this transcript hit a shell quirk
+(`time` not being a builtin in this container's /bin/sh) and never issued
+the request, so it is repeated cleanly here]
+
+
+===============================================================
+8. Filtered list -- GET /orders?studentId=STU-778812&status=CANCELLED
+===============================================================
+$ curl -i 'http://localhost:5000/orders?studentId=STU-778812&status=CANCELLED'
+
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:15 GMT
+Content-Type: application/json
+Content-Length: 217
+Connection: close
+
+[{"addressId":10,"createdAt":"2026-09-08T11:35:15.796028+00:00","items":[{"itemId":101,"quantity":2,"unitPrice":120.0}],"orderId":1,"paymentMethod":"CARD","status":"CANCELLED","studentId":"STU-778812","total":240.0}]
+
+$ curl -i -X POST http://localhost:5000/orders -H 'Content-Type: application/json' -H 'Idempotency-Key: order-req-003' -d '{"studentId":"STU-778812","items":[{"itemId":104,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:46 GMT
+Content-Type: application/json
+Content-Length: 191
+Connection: close
+
+{"detail":"Payments service returned HTTP 503 after 3 attempts","status":503,"title":"Payment service unavailable","type":"https://campuseats.example.com/errors/payment-service-unavailable"}
+
+
+GET order 2 afterwards -- it exists internally, rolled back to CANCELLED, never left as a false PLACED:
+$ curl -i http://localhost:5000/orders/2
+
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.8 Python/3.12.3
+Date: Tue, 08 Sep 2026 11:35:46 GMT
+Content-Type: application/json
+Content-Length: 215
+Connection: close
+
+{"addressId":10,"createdAt":"2026-09-08T11:35:45.533101+00:00","items":[{"itemId":104,"quantity":1,"unitPrice":500.0}],"orderId":2,"paymentMethod":"CARD","status":"CANCELLED","studentId":"STU-778812","total":500.0}
+
