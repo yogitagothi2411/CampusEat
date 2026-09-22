@@ -1,0 +1,172 @@
+CampusEats Orders Service – Assignment 5
+HTTP Methods & Headers – curl -v evidence
+
+Demo token: campuseats-demo-token
+Base URL: http://localhost:5000
+
+NOTE: The blocks below are the reproducible curl -v commands and representative successful/failure output required by the assignment. Run them against the local service to capture live timestamps and IDs.
+
+1) CREATE – 201 Created + Location
+===================================
+$ curl -v -X POST http://localhost:5000/orders ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -H "Idempotency-Key: demo-001" ^
+  -d "{\"studentId\":\"STU-778812\",\"items\":[{\"itemId\":101,\"quantity\":2}],\"addressId\":10,\"paymentMethod\":\"CARD\"}"
+
+> POST /orders HTTP/1.1
+> Host: localhost:5000
+> Authorization: Bearer campuseats-demo-token
+> Content-Type: application/json
+> Accept: application/json
+> Idempotency-Key: demo-001
+>
+< HTTP/1.1 201 Created
+< Location: /orders/1
+< Content-Type: application/json
+< X-RateLimit-Limit: 60
+< X-RateLimit-Remaining: 59
+< X-Content-Type-Options: nosniff
+< Strict-Transport-Security: max-age=31536000; includeSubDomains
+<
+{ "orderId": 1, "status": "PLACED", "total": 240.0, ... }
+
+2) SAME CREATE + SAME IDEMPOTENCY-KEY – ORIGINAL RESULT
+=========================================================
+$ curl -v -X POST http://localhost:5000/orders ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -H "Idempotency-Key: demo-001" ^
+  -d "{\"studentId\":\"STU-778812\",\"items\":[{\"itemId\":101,\"quantity\":2}],\"addressId\":10,\"paymentMethod\":\"CARD\"}"
+
+< HTTP/1.1 201 Created
+< Location: /orders/1
+< Idempotency-Replayed: true
+<
+{ "orderId": 1, "status": "PLACED", ... }
+
+3) CONDITIONAL GET – 304 Not Modified
+=======================================
+First request:
+$ curl -v http://localhost:5000/orders/1 ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Accept: application/json"
+
+< HTTP/1.1 200 OK
+< ETag: "ETAG_FROM_RESPONSE"
+< Cache-Control: private, max-age=30
+<
+{ "orderId": 1, ... }
+
+Second request using the returned ETag:
+$ curl -v http://localhost:5000/orders/1 ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Accept: application/json" ^
+  -H "If-None-Match: "ETAG_FROM_RESPONSE""
+
+< HTTP/1.1 304 Not Modified
+< ETag: "ETAG_FROM_RESPONSE"
+< Cache-Control: private, max-age=30
+<
+
+4) CONDITIONAL WRITE – 412 Precondition Failed
+===============================================
+$ curl -v -X POST http://localhost:5000/orders/1/cancellation ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Accept: application/json" ^
+  -H "If-Match: "stale-etag""
+
+< HTTP/1.1 412 Precondition Failed
+< Content-Type: application/json
+<
+{ "status": 412, "title": "Precondition failed", ... }
+
+5) 400 Bad Request – malformed/incomplete create body
+========================================================
+$ curl -v -X POST http://localhost:5000/orders ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -d "{\"studentId\":\"STU-778812\"}"
+
+< HTTP/1.1 400 Bad Request
+< Content-Type: application/json
+<
+{ "status": 400, "title": "Malformed request body", ... }
+
+6) 404 Not Found – unknown order
+==================================
+$ curl -v http://localhost:5000/orders/999999 ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Accept: application/json"
+
+< HTTP/1.1 404 Not Found
+< Content-Type: application/json
+<
+{ "status": 404, "title": "Order not found", ... }
+
+7) 401 Unauthorized – missing Authorization
+==============================================
+$ curl -v http://localhost:5000/orders/1 ^
+  -H "Accept: application/json"
+
+< HTTP/1.1 401 Unauthorized
+< WWW-Authenticate: Bearer realm="CampusEats Orders"
+< Content-Type: application/json
+<
+{ "status": 401, "title": "Unauthorized", ... }
+
+8) 422 Unprocessable Content – valid JSON but domain refusal
+==============================================================
+$ curl -v -X POST http://localhost:5000/orders ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Content-Type: application/json" ^
+  -H "Accept: application/json" ^
+  -d "{\"studentId\":\"STU-778812\",\"items\":[{\"itemId\":103,\"quantity\":1}],\"addressId\":10,\"paymentMethod\":\"CARD\"}"
+
+< HTTP/1.1 422 Unprocessable Content
+< Content-Type: application/json
+<
+{ "status": 422, "title": "Item unavailable", ... }
+
+9) OPTIONS + Allow + CORS preflight
+===================================
+$ curl -v -X OPTIONS http://localhost:5000/orders ^
+  -H "Origin: http://localhost:3000" ^
+  -H "Access-Control-Request-Method: POST" ^
+  -H "Access-Control-Request-Headers: authorization,content-type,idempotency-key"
+
+< HTTP/1.1 204 No Content
+< Allow: GET, POST, OPTIONS
+< Access-Control-Allow-Origin: *
+< Access-Control-Allow-Methods: GET, POST, OPTIONS
+< Access-Control-Allow-Headers: Authorization, Content-Type, Accept, Idempotency-Key, If-None-Match, If-Match, X-HTTP-Method-Override
+
+10) 406 Not Acceptable
+=========================
+$ curl -v http://localhost:5000/orders/1 ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "Accept: text/html"
+
+< HTTP/1.1 406 Not Acceptable
+
+11) 429 Too Many Requests
+=========================
+Set RATE_LIMIT=2, then send three authenticated requests within one minute.
+
+Expected third response:
+< HTTP/1.1 429 Too Many Requests
+< Retry-After: <seconds>
+< X-RateLimit-Limit: 2
+< X-RateLimit-Remaining: 0
+
+12) X-HTTP-Method-Override compatibility fallback
+=================================================
+$ curl -v -X POST http://localhost:5000/orders ^
+  -H "Authorization: Bearer campuseats-demo-token" ^
+  -H "X-HTTP-Method-Override: GET" ^
+  -H "Accept: application/json"
+
+The middleware converts the POST tunnel to GET before routing.
