@@ -1,0 +1,516 @@
+CS543 Web Services - Team 23 - Yogita Gothi (20251651107), Janvi Goud (20251651047), Shreya Verma (20251651086), Sonali Choudhary (20251651088)
+CampusEats Orders Service - Assignment 6 - curl transcript
+Generated 2026-10-13T11:54:21Z by run_transcript.sh against live local servers.
+Orders :5000 (default RATE_LIMIT=60), Payments stub :5001. Boilerplate headers filtered (see script).
+
+D1. SUCCESS PATH
+================
+# Happy path: 201 Created, Location header, JSON body.
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-001' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":2}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 201 CREATED
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+Location: /orders/1
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 59
+
+{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}
+
+# Follow the Location header:
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+ETag: "75bbcb2fc52f372951da58d9d993856d47b2b0ef6f77016993bdff52603cd062"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 58
+
+{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}
+
+# Second order (used below for the illegal-transition demo):
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-002' -d '{"studentId":"STU-778812","items":[{"itemId":102,"quantity":1}],"addressId":10,"paymentMethod":"UPI"}'
+HTTP/1.1 201 CREATED
+Content-Type: application/json; charset=utf-8
+Content-Length: 229
+Location: /orders/2
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 57
+
+{"orderId": 2, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "UPI", "status": "PLACED", "total": 45.5, "items": [{"itemId": 102, "quantity": 1, "unitPrice": 45.5}], "createdAt": "2026-10-13T11:54:21.459570+00:00"}
+
+
+D2. FAILURE PATHS (every one a Problem Details body, application/problem+json)
+==============================================================================
+# Empty cart -> 422 empty-cart
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 230
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 56
+
+{"type": "https://campuseats.example.com/errors/empty-cart", "title": "Empty cart", "status": 422, "detail": "An order must contain at least one item.", "errors": [{"field": "items", "message": "must contain at least one item"}]}
+
+# quantity 0 -> 422 validation-error, field items[0].quantity
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":0}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 259
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 55
+
+{"type": "https://campuseats.example.com/errors/validation-error", "title": "Validation failed", "status": 422, "detail": "The request body has 1 invalid field. See 'errors'.", "errors": [{"field": "items[0].quantity", "message": "must be an integer >= 1"}]}
+
+# quantity -3 -> 422 (same field, same type)
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":-3}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 259
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 54
+
+{"type": "https://campuseats.example.com/errors/validation-error", "title": "Validation failed", "status": 422, "detail": "The request body has 1 invalid field. See 'errors'.", "errors": [{"field": "items[0].quantity", "message": "must be an integer >= 1"}]}
+
+# TWO bad fields at once (quantity 0 AND addressId missing) -> ONE 422 listing both
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":0}],"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 310
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 53
+
+{"type": "https://campuseats.example.com/errors/validation-error", "title": "Validation failed", "status": 422, "detail": "The request body has 2 invalid fields. See 'errors'.", "errors": [{"field": "items[0].quantity", "message": "must be an integer >= 1"}, {"field": "addressId", "message": "is required"}]}
+
+# Everything wrong at once -> six entries in errors[]
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"items":[{"quantity":0},"x"],"paymentMethod":"CHEQUE"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 586
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 52
+
+{"type": "https://campuseats.example.com/errors/validation-error", "title": "Validation failed", "status": 422, "detail": "The request body has 6 invalid fields. See 'errors'.", "errors": [{"field": "studentId", "message": "is required"}, {"field": "items[0].itemId", "message": "is required"}, {"field": "items[0].quantity", "message": "must be an integer >= 1"}, {"field": "items[1]", "message": "must be an object with itemId and quantity"}, {"field": "addressId", "message": "is required"}, {"field": "paymentMethod", "message": "must be one of ['CARD', 'COD', 'UPI', 'WALLET']"}]}
+
+# Body is not JSON -> 400 malformed-body (cannot even be validated)
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{not json'
+HTTP/1.1 400 BAD REQUEST
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 164
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 51
+
+{"type": "https://campuseats.example.com/errors/malformed-body", "title": "Malformed request body", "status": 400, "detail": "The request body is not valid JSON."}
+
+# Wrong media type -> 415 unsupported-media-type
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: text/plain' -d studentId=STU-778812
+HTTP/1.1 415 UNSUPPORTED MEDIA TYPE
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 187
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 50
+
+{"type": "https://campuseats.example.com/errors/unsupported-media-type", "title": "Unsupported media type", "status": 415, "detail": "Send the body with Content-Type: application/json."}
+
+# Unknown order id -> 404 order-not-found
+$ curl -i http://localhost:5000/orders/999999 -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 404 NOT FOUND
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 151
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 49
+
+{"type": "https://campuseats.example.com/errors/order-not-found", "title": "Order not found", "status": 404, "detail": "Order 999999 does not exist."}
+
+# Unknown URL -> 404 not-found
+$ curl -i http://localhost:5000/menu -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 404 NOT FOUND
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 144
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 48
+
+{"type": "https://campuseats.example.com/errors/not-found", "title": "Not found", "status": 404, "detail": "The requested URL does not exist."}
+
+# Illegal transition: cancel order 2 (200), then cancel it again -> 409 illegal-transition
+$ curl -i -X POST http://localhost:5000/orders/2/cancellation -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+ETag: "cf15419357340e61c5ca9a056f7eed9be04ab7a13f299ee5850cda70ca3d7b88"
+Cache-Control: no-store
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 47
+
+{"orderId": 2, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "UPI", "status": "CANCELLED", "total": 45.5, "items": [{"itemId": 102, "quantity": 1, "unitPrice": 45.5}], "createdAt": "2026-10-13T11:54:21.459570+00:00"}
+
+$ curl -i -X POST http://localhost:5000/orders/2/cancellation -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 409 CONFLICT
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 189
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 46
+
+{"type": "https://campuseats.example.com/errors/illegal-transition", "title": "Illegal state transition", "status": 409, "detail": "Order 2 is 'CANCELLED' and cannot move to 'CANCELLED'."}
+
+# Cancel an unknown order -> 404
+$ curl -i -X POST http://localhost:5000/orders/999999/cancellation -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 404 NOT FOUND
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 151
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+
+{"type": "https://campuseats.example.com/errors/order-not-found", "title": "Order not found", "status": 404, "detail": "Order 999999 does not exist."}
+
+# Stale If-Match -> 412 precondition-failed
+$ curl -i -X POST http://localhost:5000/orders/1/cancellation -H 'Authorization: Bearer campuseats-demo-token' -H 'If-Match: "stale-etag"'
+HTTP/1.1 412 PRECONDITION FAILED
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 214
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 44
+
+{"type": "https://campuseats.example.com/errors/precondition-failed", "title": "Precondition failed", "status": 412, "detail": "The order changed after the supplied If-Match ETag; fetch it again before updating."}
+
+# Item unavailable (item 103 is switched off, 999 does not exist) -> 422 item-unavailable, one entry per item
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[{"itemId":103,"quantity":1},{"itemId":999,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 370
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 43
+
+{"type": "https://campuseats.example.com/errors/item-unavailable", "title": "Item unavailable", "status": 422, "detail": "Item(s) 103, 999 cannot be ordered right now.", "errors": [{"field": "items[0].itemId", "message": "item 103 is unavailable or has insufficient stock"}, {"field": "items[1].itemId", "message": "item 999 is unavailable or has insufficient stock"}]}
+
+# Address that is not this student's -> 422 invalid-address
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":1}],"addressId":20,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 291
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+
+{"type": "https://campuseats.example.com/errors/invalid-address", "title": "Invalid delivery address", "status": 422, "detail": "Address 20 does not exist or does not belong to STU-778812.", "errors": [{"field": "addressId", "message": "does not exist or does not belong to this student"}]}
+
+# Payment declined (Payments stub declines amount 999) -> 422 payment-declined; upstream bank text NOT passed on
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-declined' -d '{"studentId":"STU-778812","items":[{"itemId":105,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 187
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 41
+
+{"type": "https://campuseats.example.com/errors/payment-declined", "title": "Payment declined", "status": 422, "detail": "The payment provider declined the charge. No order was placed."}
+
+# Same key replayed -> same 422, Idempotency-Replayed: true (a decline is permanent, so it is remembered)
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-declined' -d '{"studentId":"STU-778812","items":[{"itemId":105,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 187
+Idempotency-Replayed: true
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 40
+
+{"type": "https://campuseats.example.com/errors/payment-declined", "title": "Payment declined", "status": 422, "detail": "The payment provider declined the charge. No order was placed."}
+
+# Idempotency-Key reused with a DIFFERENT body -> 409 idempotency-conflict
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-001' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":5}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 409 CONFLICT
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 205
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 39
+
+{"type": "https://campuseats.example.com/errors/idempotency-conflict", "title": "Idempotency key conflict", "status": 409, "detail": "This Idempotency-Key was already used with a different request body."}
+
+# Payments gateway keeps failing (stub returns 503 for amount 500; Orders retries 3x with backoff) -> 503 + Retry-After, total time shown
+$ curl -i -w '\n[curl] total time: %{time_total}s\n' -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-503' -d '{"studentId":"STU-778812","items":[{"itemId":104,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 207
+Retry-After: 5
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 38
+
+{"type": "https://campuseats.example.com/errors/payment-service-unavailable", "title": "Payment service unavailable", "status": 503, "detail": "The payment service is temporarily unavailable. Retry later."}
+
+[curl] total time: 0.862908s
+
+# No / bad token -> 401 unauthorized (+ WWW-Authenticate)
+$ curl -i http://localhost:5000/orders/1
+HTTP/1.1 401 UNAUTHORIZED
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 174
+WWW-Authenticate: Bearer realm="CampusEats Orders"
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 60
+
+{"type": "https://campuseats.example.com/errors/unauthorized", "title": "Unauthorized", "status": 401, "detail": "A valid Authorization: Bearer <token> header is required."}
+
+# Accept: text/html -> 406 not-acceptable
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: text/html'
+HTTP/1.1 406 NOT ACCEPTABLE
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 189
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 38
+
+{"type": "https://campuseats.example.com/errors/not-acceptable", "title": "Not acceptable", "status": 406, "detail": "This API can produce application/json (default) and application/xml."}
+
+# Methods that are not offered -> 405 method-not-allowed with Allow
+$ curl -i -X DELETE http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 405 METHOD NOT ALLOWED
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 180
+Allow: GET, HEAD, OPTIONS
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 37
+
+{"type": "https://campuseats.example.com/errors/method-not-allowed", "title": "Method not allowed", "status": 405, "detail": "The HTTP method is not supported for this resource."}
+
+$ curl -i -X PATCH http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -d '{"status":"CANCELLED"}'
+HTTP/1.1 405 METHOD NOT ALLOWED
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 180
+Allow: GET, HEAD, OPTIONS
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 36
+
+{"type": "https://campuseats.example.com/errors/method-not-allowed", "title": "Method not allowed", "status": 405, "detail": "The HTTP method is not supported for this resource."}
+
+# Bad query parameters -> one 422 naming each
+$ curl -i 'http://localhost:5000/orders?status=BOGUS&page=0&pageSize=abc&sortOrder=up' -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 460
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 35
+
+{"type": "https://campuseats.example.com/errors/validation-error", "title": "Validation failed", "status": 422, "detail": "The query string has 4 invalid parameters. See 'errors'.", "errors": [{"field": "status", "message": "must be one of PENDING, PLACED, CANCELLED"}, {"field": "sortOrder", "message": "must be asc or desc"}, {"field": "page", "message": "must be an integer >= 1"}, {"field": "pageSize", "message": "must be an integer between 1 and 100"}]}
+
+# Rate limit (separate instance on :5003 with RATE_LIMIT=3): three OK, the fourth is 429 + Retry-After
+$ curl -i http://localhost:5003/orders -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 3
+X-RateLimit-Limit: 3
+X-RateLimit-Remaining: 2
+
+[]
+
+$ curl -i http://localhost:5003/orders -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 3
+X-RateLimit-Limit: 3
+X-RateLimit-Remaining: 1
+
+[]
+
+$ curl -i http://localhost:5003/orders -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 3
+X-RateLimit-Limit: 3
+X-RateLimit-Remaining: 0
+
+[]
+
+$ curl -i http://localhost:5003/orders -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 429 TOO MANY REQUESTS
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 166
+Retry-After: 59
+X-RateLimit-Limit: 3
+X-RateLimit-Remaining: 0
+
+{"type": "https://campuseats.example.com/errors/rate-limited", "title": "Too many requests", "status": 429, "detail": "Rate limit exceeded. Retry after 59 seconds."}
+
+# Unexpected server fault (fault_demo.py on :5002 makes the store raise a DB-style error for order 666) -> clean 500
+$ curl -i http://localhost:5002/orders/666 -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 500 INTERNAL SERVER ERROR
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 230
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 59
+
+{"type": "https://campuseats.example.com/errors/internal-error", "title": "Internal server error", "status": 500, "detail": "An unexpected error occurred. If it persists, quote the errorId to support.", "errorId": "98a6c4f0a99c"}
+
+# What stayed in the SERVER log (never sent to the client):
+  log> [2026-10-13 11:54:22,578] ERROR in app: unhandled error errorId=98a6c4f0a99c GET /orders/666
+  log> Traceback (most recent call last):
+  log>     raise RuntimeError("psycopg2.OperationalError: could not connect to server at 10.0.3.14:5432 "
+  log> RuntimeError: psycopg2.OperationalError: could not connect to server at 10.0.3.14:5432 while running: SELECT * FROM orders WHERE id = 666
+
+
+D3. CONTENT NEGOTIATION
+=======================
+# Same order as JSON (default) ...
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/json'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+ETag: "75bbcb2fc52f372951da58d9d993856d47b2b0ef6f77016993bdff52603cd062"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 34
+
+{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}
+
+# ... and as XML. Note the different Content-Type and ETag.
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/xml'
+HTTP/1.1 200 OK
+Content-Type: application/xml; charset=utf-8
+Content-Length: 363
+ETag: "e28e0d6796257739a304f3cf28bc09cc11908de420b92f7e1e71a780080782cf"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 33
+
+<?xml version='1.0' encoding='utf-8'?>
+<order><orderId>1</orderId><studentId>STU-778812</studentId><addressId>10</addressId><paymentMethod>CARD</paymentMethod><status>PLACED</status><total>240.0</total><items><item><itemId>101</itemId><quantity>2</quantity><unitPrice>120.0</unitPrice></item></items><createdAt>2026-10-13T11:54:21.437395+00:00</createdAt></order>
+
+# q-values: JSON preferred (0.9 > 0.5)
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/xml;q=0.5, application/json;q=0.9'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+ETag: "75bbcb2fc52f372951da58d9d993856d47b2b0ef6f77016993bdff52603cd062"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 32
+
+{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}
+
+# Wildcard with XML preferred
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/xml, */*;q=0.1'
+HTTP/1.1 200 OK
+Content-Type: application/xml; charset=utf-8
+Content-Length: 363
+ETag: "e28e0d6796257739a304f3cf28bc09cc11908de420b92f7e1e71a780080782cf"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 31
+
+<?xml version='1.0' encoding='utf-8'?>
+<order><orderId>1</orderId><studentId>STU-778812</studentId><addressId>10</addressId><paymentMethod>CARD</paymentMethod><status>PLACED</status><total>240.0</total><items><item><itemId>101</itemId><quantity>2</quantity><unitPrice>120.0</unitPrice></item></items><createdAt>2026-10-13T11:54:21.437395+00:00</createdAt></order>
+
+# List as XML
+$ curl -i 'http://localhost:5000/orders?studentId=STU-778812&status=PLACED' -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/xml'
+HTTP/1.1 200 OK
+Content-Type: application/xml; charset=utf-8
+Content-Length: 380
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 30
+
+<?xml version='1.0' encoding='utf-8'?>
+<orders><order><orderId>1</orderId><studentId>STU-778812</studentId><addressId>10</addressId><paymentMethod>CARD</paymentMethod><status>PLACED</status><total>240.0</total><items><item><itemId>101</itemId><quantity>2</quantity><unitPrice>120.0</unitPrice></item></items><createdAt>2026-10-13T11:54:21.437395+00:00</createdAt></order></orders>
+
+# Create as XML (201 + Location)
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Accept: application/xml' -d '{"studentId":"STU-001","items":[{"itemId":101,"quantity":1}],"addressId":20,"paymentMethod":"COD"}'
+HTTP/1.1 201 CREATED
+Content-Type: application/xml; charset=utf-8
+Content-Length: 359
+Location: /orders/5
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 29
+
+<?xml version='1.0' encoding='utf-8'?>
+<order><orderId>5</orderId><studentId>STU-001</studentId><addressId>20</addressId><paymentMethod>COD</paymentMethod><status>PLACED</status><total>120.0</total><items><item><itemId>101</itemId><quantity>1</quantity><unitPrice>120.0</unitPrice></item></items><createdAt>2026-10-13T11:54:22.639948+00:00</createdAt></order>
+
+# Errors follow the same negotiation: 404 as application/problem+xml
+$ curl -i http://localhost:5000/orders/999999 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/xml'
+HTTP/1.1 404 NOT FOUND
+Content-Type: application/problem+xml; charset=utf-8
+Content-Length: 245
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 28
+
+<?xml version='1.0' encoding='utf-8'?>
+<problem xmlns="urn:ietf:rfc:9457"><type>https://campuseats.example.com/errors/order-not-found</type><title>Order not found</title><status>404</status><detail>Order 999999 does not exist.</detail></problem>
+
+# 422 as XML
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Accept: application/xml' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":0}],"paymentMethod":"CARD"}'
+HTTP/1.1 422 UNPROCESSABLE ENTITY
+Content-Type: application/problem+xml; charset=utf-8
+Content-Length: 450
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 27
+
+<?xml version='1.0' encoding='utf-8'?>
+<problem xmlns="urn:ietf:rfc:9457"><type>https://campuseats.example.com/errors/validation-error</type><title>Validation failed</title><status>422</status><detail>The request body has 2 invalid fields. See 'errors'.</detail><errors><error><field>items[0].quantity</field><message>must be an integer &gt;= 1</message></error><error><field>addressId</field><message>is required</message></error></errors></problem>
+
+# Cannot produce what was asked -> 406 (answered as problem+json, the default)
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'Accept: application/pdf'
+HTTP/1.1 406 NOT ACCEPTABLE
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 189
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 27
+
+{"type": "https://campuseats.example.com/errors/not-acceptable", "title": "Not acceptable", "status": 406, "detail": "This API can produce application/json (default) and application/xml."}
+
+
+D4. NO REGRESSIONS (A5 checks re-run)
+=====================================
+# Idempotency: repeat of demo-001 returns the ORIGINAL order #1 (Idempotency-Replayed: true), no second order/charge
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-001' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":2}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 201 CREATED
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+Location: /orders/1
+Idempotency-Replayed: true
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 26
+
+{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}
+
+# Still exactly one PLACED order for item 101 x2 (order 2 was cancelled, order 1 untouched):
+$ curl -i 'http://localhost:5000/orders?studentId=STU-778812&status=PLACED' -H 'Authorization: Bearer campuseats-demo-token'
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 234
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 25
+
+[{"orderId": 1, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 240.0, "items": [{"itemId": 101, "quantity": 2, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:21.437395+00:00"}]
+
+# Conditional GET still works: 304, no body, no Content-Type
+$ curl -i http://localhost:5000/orders/1 -H 'Authorization: Bearer campuseats-demo-token' -H 'If-None-Match: "75bbcb2fc52f372951da58d9d993856d47b2b0ef6f77016993bdff52603cd062"'
+HTTP/1.1 304 NOT MODIFIED
+ETag: "75bbcb2fc52f372951da58d9d993856d47b2b0ef6f77016993bdff52603cd062"
+Cache-Control: private, max-age=30
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 23
+
+
+# Retries: STOP the Payments service -> connection refused; Orders retries 3x with exponential backoff + jitter, then a clean 503. No host/port in the body.
+# (The 2-second read-timeout path is exercised by tests/test_app.py: test_timeout_is_retried_then_unavailable.)
+$ curl -i -w '\n[curl] total time: %{time_total}s\n' -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-retry' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 503 SERVICE UNAVAILABLE
+Content-Type: application/problem+json; charset=utf-8
+Content-Length: 207
+Retry-After: 5
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 22
+
+{"type": "https://campuseats.example.com/errors/payment-service-unavailable", "title": "Payment service unavailable", "status": 503, "detail": "The payment service is temporarily unavailable. Retry later."}
+
+[curl] total time: 0.767228s
+
+# What stayed in the SERVER log (upstream detail the client never sees):
+  log> ERROR:app:payments unavailable order=6 cause=Payments service unreachable after 3 attempts: HTTPConnectionPool(host='localhost', port=5001): Max retries exceeded with url: /payments/charge (Caused by NewConnectionError("HTTPConnec
+
+# Payments comes back; the client retries with the SAME Idempotency-Key -> 201 (the 503 was not cached)
+$ curl -i -X POST http://localhost:5000/orders -H 'Authorization: Bearer campuseats-demo-token' -H 'Content-Type: application/json' -H 'Idempotency-Key: demo-retry' -d '{"studentId":"STU-778812","items":[{"itemId":101,"quantity":1}],"addressId":10,"paymentMethod":"CARD"}'
+HTTP/1.1 201 CREATED
+Content-Type: application/json; charset=utf-8
+Content-Length: 232
+Location: /orders/7
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 21
+
+{"orderId": 7, "studentId": "STU-778812", "addressId": 10, "paymentMethod": "CARD", "status": "PLACED", "total": 120.0, "items": [{"itemId": 101, "quantity": 1, "unitPrice": 120.0}], "createdAt": "2026-10-13T11:54:24.286644+00:00"}
+
+(end of transcript)

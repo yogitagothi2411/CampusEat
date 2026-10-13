@@ -1,0 +1,430 @@
+openapi: 3.0.3
+info:
+  title: CampusEats Orders Service
+  version: 3.0.0
+  description: |
+    REST API for the CampusEats Orders Service (Assignment 6: honest responses).
+
+    **The status code is the result.** A failure is never a `200` with `{"ok": false}`.
+    Every failure body is a Problem Details document (RFC 9457) with
+    `Content-Type: application/problem+json; charset=utf-8` (or `application/problem+xml`
+    when the client asked for XML).
+
+    **Content negotiation.** `Accept: application/json` (default) or `application/xml`.
+    Anything else yields `406`. Every response body carries a `Content-Type` with `charset=utf-8`.
+
+    **Retry safety.** Only transient failures are retried: `429`, `503`, or a network error.
+    Both carry `Retry-After`. A `4xx` (other than `429`) is never retried unchanged.
+    `POST /orders` may be retried only when it was sent with an `Idempotency-Key`.
+
+    **Methods not offered.** `PATCH /orders/{orderId}` and `DELETE /orders/{orderId}` do not exist
+    (cancellation is `POST /orders/{orderId}/cancellation`); they answer `405` with an `Allow`
+    header, as does any other unsupported method on a path.
+
+    ### Error type catalogue (stable `type` URIs, base `https://campuseats.example.com/errors/`)
+    | slug | status | triggered by |
+    |---|---|---|
+    | `empty-cart` | 422 | `items` is an empty array |
+    | `validation-error` | 422 | any other invalid body field or query parameter (see `errors[]`) |
+    | `invalid-address` | 422 | `addressId` unknown or not the student's |
+    | `item-unavailable` | 422 | an item does not exist, is switched off, or lacks stock |
+    | `payment-declined` | 422 | Payments service refused the charge |
+    | `order-not-found` | 404 | no order with that id |
+    | `illegal-transition` | 409 | order's current status does not allow the change (e.g. cancelling a CANCELLED order) |
+    | `idempotency-conflict` | 409 | `Idempotency-Key` re-used with a different body |
+    | `precondition-failed` | 412 | `If-Match` ETag is stale |
+    | `malformed-body` | 400 | body missing, not JSON, or not a JSON object |
+    | `unsupported-media-type` | 415 | body not sent as `application/json` |
+    | `unauthorized` | 401 | missing/invalid bearer token |
+    | `not-found` | 404 | unknown URL |
+    | `method-not-allowed` | 405 | method not offered on this path |
+    | `not-acceptable` | 406 | `Accept` allows neither JSON nor XML |
+    | `rate-limited` | 429 | per-client request budget used up |
+    | `payment-service-unavailable` | 503 | Payments still failing after retries |
+    | `internal-error` | 500 | unexpected server fault (detail hidden, `errorId` given) |
+    | `http-error` | other | fallback for other framework-level HTTP errors |
+servers:
+  - url: http://localhost:5000
+    description: Local development
+
+tags:
+  - name: Orders
+
+paths:
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      description: Safe and idempotent; retry freely on 429/503/network error.
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/Accept'
+        - in: query
+          name: studentId
+          schema: {type: string}
+        - in: query
+          name: status
+          schema: {type: string, enum: [PENDING, PLACED, CANCELLED]}
+        - in: query
+          name: sortBy
+          schema: {type: string, enum: [orderId, total, createdAt, status], default: orderId}
+        - in: query
+          name: sortOrder
+          schema: {type: string, enum: [asc, desc], default: asc}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, default: 1}
+        - in: query
+          name: pageSize
+          schema: {type: integer, minimum: 1, maximum: 100, default: 10}
+      responses:
+        '200':
+          description: Matching orders (empty array when none match)
+          headers:
+            X-RateLimit-Limit: {$ref: '#/components/headers/RateLimitLimit'}
+            X-RateLimit-Remaining: {$ref: '#/components/headers/RateLimitRemaining'}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Order'}
+            application/xml:
+              schema:
+                type: array
+                xml: {name: orders, wrapped: true}
+                items: {$ref: '#/components/schemas/Order'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    post:
+      tags: [Orders]
+      summary: Create an order
+      description: |
+        Validates the whole body first and reports every problem in one `422`; only a valid body
+        is looked up, charged and stored. Retry on `429`/`503` only with the same `Idempotency-Key`.
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/Accept'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/MethodOverride'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OrderCreateRequest'}
+      responses:
+        '201':
+          description: Order created (or the original result replayed for a repeated Idempotency-Key)
+          headers:
+            Location:
+              description: URL of the new order, `/orders/{id}`
+              schema: {type: string, example: /orders/1}
+            Idempotency-Replayed:
+              schema: {type: string, enum: ['true']}
+            X-RateLimit-Limit: {$ref: '#/components/headers/RateLimitLimit'}
+            X-RateLimit-Remaining: {$ref: '#/components/headers/RateLimitRemaining'}
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/Order'}}
+            application/xml: {schema: {$ref: '#/components/schemas/Order'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '409': {$ref: '#/components/responses/IdempotencyConflict'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    options:
+      tags: [Orders]
+      summary: Discover supported methods and CORS policy
+      responses:
+        '204':
+          description: No content
+          headers:
+            Allow: {schema: {type: string, example: 'GET, POST, OPTIONS'}}
+            Access-Control-Allow-Origin: {schema: {type: string, example: '*'}}
+            Access-Control-Allow-Methods: {schema: {type: string}}
+            Access-Control-Allow-Headers: {schema: {type: string}}
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Get one order
+      description: Safe and idempotent; retry freely on 429/503/network error. `PATCH` and `DELETE` answer `405`.
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/Accept'
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          description: Order representation
+          headers:
+            ETag: {schema: {type: string}, description: 'Differs between the JSON and XML representation.'}
+            Cache-Control: {schema: {type: string, example: 'private, max-age=30'}}
+            X-RateLimit-Limit: {$ref: '#/components/headers/RateLimitLimit'}
+            X-RateLimit-Remaining: {$ref: '#/components/headers/RateLimitRemaining'}
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/Order'}}
+            application/xml: {schema: {$ref: '#/components/schemas/Order'}}
+        '304':
+          description: Representation unchanged; no response body (and so no Content-Type)
+          headers: {ETag: {schema: {type: string}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    options:
+      tags: [Orders]
+      summary: Discover methods for an order
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses:
+        '204':
+          description: No content
+          headers: {Allow: {schema: {type: string, example: 'GET, OPTIONS'}}}
+
+  /orders/{orderId}/cancellation:
+    post:
+      tags: [Orders]
+      summary: Cancel an order
+      description: |
+        Cancellation is modelled as a state-changing sub-resource rather than deleting the order.
+        Allowed from PENDING or PLACED only; anything else is an `illegal-transition` (409).
+        Not blindly retryable: after a network error, GET the order to see whether it already
+        changed (a repeat then yields 409), or send `If-Match` to guard against stale state.
+      parameters:
+        - $ref: '#/components/parameters/Authorization'
+        - $ref: '#/components/parameters/Accept'
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/MethodOverride'
+      responses:
+        '200':
+          description: Order cancelled
+          headers:
+            ETag: {schema: {type: string}}
+            Cache-Control: {schema: {type: string, example: 'no-store'}}
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/Order'}}
+            application/xml: {schema: {$ref: '#/components/schemas/Order'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '406': {$ref: '#/components/responses/NotAcceptable'}
+        '409': {$ref: '#/components/responses/IllegalTransition'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '500': {$ref: '#/components/responses/InternalError'}
+    options:
+      tags: [Orders]
+      summary: Discover cancellation methods
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses:
+        '204':
+          description: No content
+          headers: {Allow: {schema: {type: string, example: 'POST, OPTIONS'}}}
+
+components:
+  parameters:
+    Authorization:
+      in: header
+      name: Authorization
+      required: true
+      schema: {type: string, example: 'Bearer campuseats-demo-token'}
+    Accept:
+      in: header
+      name: Accept
+      required: false
+      description: '`application/json` (default) or `application/xml`; q-values and wildcards honoured; otherwise 406.'
+      schema: {type: string, example: application/json}
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema: {type: string}
+      description: Reuse the same key after a lost response or a 429/503 to get the original result without repeating payment/order work.
+    IfNoneMatch:
+      in: header
+      name: If-None-Match
+      required: false
+      schema: {type: string}
+      description: Return 304 when the representation has not changed.
+    IfMatch:
+      in: header
+      name: If-Match
+      required: false
+      schema: {type: string}
+      description: Prevent an update when the client holds a stale ETag (ETag of either representation is accepted).
+    MethodOverride:
+      in: header
+      name: X-HTTP-Method-Override
+      required: false
+      schema: {type: string, enum: [GET, POST, PUT, PATCH, DELETE]}
+      description: Compatibility fallback for clients/proxies that can only send POST. It must map to a method supported by the target route.
+    OrderId:
+      in: path
+      name: orderId
+      required: true
+      schema: {type: integer, minimum: 1}
+
+  headers:
+    RateLimitLimit:
+      schema: {type: integer}
+    RateLimitRemaining:
+      schema: {type: integer}
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: {type: integer, minimum: 1}
+
+  responses:
+    BadRequest:
+      description: "`malformed-body` - body missing, not valid JSON, or not a JSON object"
+      content: &problemContent
+        application/problem+json: {schema: {$ref: '#/components/schemas/ProblemDetails'}}
+        application/problem+xml: {schema: {$ref: '#/components/schemas/ProblemDetails'}}
+    Unauthorized:
+      description: "`unauthorized` - missing or invalid bearer token"
+      headers: {WWW-Authenticate: {schema: {type: string}}}
+      content: *problemContent
+    NotFound:
+      description: "`order-not-found` - no order with that id"
+      content: *problemContent
+    NotAcceptable:
+      description: "`not-acceptable` - neither application/json nor application/xml is acceptable"
+      content: *problemContent
+    IdempotencyConflict:
+      description: "`idempotency-conflict` - Idempotency-Key re-used with a different body"
+      content: *problemContent
+    IllegalTransition:
+      description: "`illegal-transition` - the order's current status does not allow this change"
+      content: *problemContent
+    PreconditionFailed:
+      description: "`precondition-failed` - If-Match ETag is stale"
+      content: *problemContent
+    UnsupportedMediaType:
+      description: "`unsupported-media-type` - body must be application/json"
+      content: *problemContent
+    Unprocessable:
+      description: |
+        Body or query parameter is well-formed but invalid. `type` is one of `validation-error`,
+        `empty-cart`, `invalid-address`, `item-unavailable`, `payment-declined`.
+        `errors[]` names every bad field.
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/ProblemDetails'}
+          examples:
+            twoBadFields:
+              summary: Two bad fields reported at once
+              value:
+                type: https://campuseats.example.com/errors/validation-error
+                title: Validation failed
+                status: 422
+                detail: "The request body has 2 invalid fields. See 'errors'."
+                errors:
+                  - {field: 'items[0].quantity', message: 'must be an integer >= 1'}
+                  - {field: addressId, message: is required}
+        application/problem+xml: {schema: {$ref: '#/components/schemas/ProblemDetails'}}
+    TooManyRequests:
+      description: "`rate-limited` - per-client request budget used up. Transient: retry after `Retry-After` seconds."
+      headers:
+        Retry-After: {$ref: '#/components/headers/RetryAfter'}
+        X-RateLimit-Limit: {$ref: '#/components/headers/RateLimitLimit'}
+        X-RateLimit-Remaining: {$ref: '#/components/headers/RateLimitRemaining'}
+      content: *problemContent
+    InternalError:
+      description: "`internal-error` - unexpected fault. Detail is logged server-side; the body carries only a generic message and an `errorId`."
+      content: *problemContent
+    Unavailable:
+      description: "`payment-service-unavailable` - Payments still failing after retries. Transient: retry after `Retry-After` seconds with the same Idempotency-Key."
+      headers:
+        Retry-After: {$ref: '#/components/headers/RetryAfter'}
+      content: *problemContent
+
+  schemas:
+    OrderCreateRequest:
+      type: object
+      required: [studentId, items, addressId, paymentMethod]
+      properties:
+        studentId: {type: string, minLength: 1}
+        addressId: {type: integer}
+        paymentMethod: {type: string, enum: [CARD, UPI, WALLET, COD]}
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [itemId, quantity]
+            properties:
+              itemId: {type: integer}
+              quantity: {type: integer, minimum: 1}
+    Order:
+      type: object
+      xml: {name: order}
+      required: [orderId, studentId, addressId, paymentMethod, status, total, items, createdAt]
+      properties:
+        orderId: {type: integer}
+        studentId: {type: string}
+        addressId: {type: integer}
+        paymentMethod: {type: string}
+        status: {type: string, enum: [PENDING, PLACED, CANCELLED]}
+        total: {type: number, format: float}
+        items:
+          type: array
+          xml: {wrapped: true}
+          items:
+            type: object
+            xml: {name: item}
+            properties:
+              itemId: {type: integer}
+              quantity: {type: integer}
+              unitPrice: {type: number, format: float}
+        createdAt: {type: string, format: date-time}
+    FieldError:
+      type: object
+      required: [field, message]
+      properties:
+        field: {type: string, example: 'items[0].quantity', description: Path of the bad field in the request.}
+        message: {type: string, example: 'must be an integer >= 1'}
+    ProblemDetails:
+      type: object
+      xml: {name: problem, namespace: 'urn:ietf:rfc:9457'}
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable identifier of the kind of problem (see the catalogue in the API description).
+          enum:
+            - https://campuseats.example.com/errors/empty-cart
+            - https://campuseats.example.com/errors/validation-error
+            - https://campuseats.example.com/errors/invalid-address
+            - https://campuseats.example.com/errors/item-unavailable
+            - https://campuseats.example.com/errors/payment-declined
+            - https://campuseats.example.com/errors/order-not-found
+            - https://campuseats.example.com/errors/illegal-transition
+            - https://campuseats.example.com/errors/idempotency-conflict
+            - https://campuseats.example.com/errors/precondition-failed
+            - https://campuseats.example.com/errors/malformed-body
+            - https://campuseats.example.com/errors/unsupported-media-type
+            - https://campuseats.example.com/errors/unauthorized
+            - https://campuseats.example.com/errors/not-found
+            - https://campuseats.example.com/errors/method-not-allowed
+            - https://campuseats.example.com/errors/not-acceptable
+            - https://campuseats.example.com/errors/rate-limited
+            - https://campuseats.example.com/errors/payment-service-unavailable
+            - https://campuseats.example.com/errors/internal-error
+            - https://campuseats.example.com/errors/http-error
+        title: {type: string, description: Short, human-readable summary; the same for every occurrence of a type.}
+        status: {type: integer, description: The HTTP status code; always equals the response status.}
+        detail: {type: string, description: Explanation of this occurrence. Never contains stack traces, SQL or upstream error text.}
+        errors:
+          type: array
+          description: Present on 422 responses; one entry per bad field.
+          xml: {wrapped: true}
+          items: {$ref: '#/components/schemas/FieldError'}
+        errorId:
+          type: string
+          description: Present on 500 only. Quote it to support; it matches a line in the server log.

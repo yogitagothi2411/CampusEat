@@ -1,0 +1,60 @@
+test_charge_called_once_for_replayed_key (tests.test_app.A5Regression.test_charge_called_once_for_replayed_key) ... ok
+test_cors_and_security_headers (tests.test_app.A5Regression.test_cors_and_security_headers) ... ok
+test_create_order_succeeds (tests.test_app.A5Regression.test_create_order_succeeds) ... ok
+test_etag_and_conditional_get (tests.test_app.A5Regression.test_etag_and_conditional_get) ... ok
+test_idempotency_key_reuse_with_different_body_is_409 (tests.test_app.A5Regression.test_idempotency_key_reuse_with_different_body_is_409) ... ok
+test_idempotent_repeat_returns_original (tests.test_app.A5Regression.test_idempotent_repeat_returns_original) ... ok
+test_if_match_current_etag_allows_cancel (tests.test_app.A5Regression.test_if_match_current_etag_allows_cancel) ... ok
+test_if_match_stale_returns_412 (tests.test_app.A5Regression.test_if_match_stale_returns_412) ... ok
+test_options_returns_allow (tests.test_app.A5Regression.test_options_returns_allow) ... ok
+test_payment_client_timeout_budget_unchanged (tests.test_app.A5Regression.test_payment_client_timeout_budget_unchanged) ... ok
+test_every_body_has_charset (tests.test_app.ContentTypeEverywhere.test_every_body_has_charset) ... ok
+test_406_for_unproducible (tests.test_app.Negotiation.test_406_for_unproducible) ... ok
+test_default_is_json (tests.test_app.Negotiation.test_default_is_json) ... ok
+test_etag_differs_per_representation_and_either_works_for_if_match (tests.test_app.Negotiation.test_etag_differs_per_representation_and_either_works_for_if_match) ... ok
+test_negotiate_function (tests.test_app.Negotiation.test_negotiate_function) ... ok
+test_replay_follows_current_accept (tests.test_app.Negotiation.test_replay_follows_current_accept) ... ok
+test_xml_422_lists_errors (tests.test_app.Negotiation.test_xml_422_lists_errors) ... ok
+test_xml_create_and_list (tests.test_app.Negotiation.test_xml_create_and_list) ... ok
+test_xml_error_is_problem_xml (tests.test_app.Negotiation.test_xml_error_is_problem_xml) ... ok
+test_xml_order (tests.test_app.Negotiation.test_xml_order) ... ok
+test_429_has_retry_after (tests.test_app.PaymentAndRetry.test_429_has_retry_after) ... ok
+test_503_has_retry_after_and_hides_upstream_text (tests.test_app.PaymentAndRetry.test_503_has_retry_after_and_hides_upstream_text) ... [2026-10-13 11:54:24,587] ERROR in app: payments unavailable order=1 cause=HTTPConnectionPool(host='10.0.0.7', port=5001): Max retries exceeded
+ok
+test_503_is_not_cached_so_same_key_retry_can_succeed (tests.test_app.PaymentAndRetry.test_503_is_not_cached_so_same_key_retry_can_succeed) ... [2026-10-13 11:54:24,589] ERROR in app: payments unavailable order=1 cause=down
+ok
+test_declined_is_remembered_and_replayed_unchanged (tests.test_app.PaymentAndRetry.test_declined_is_remembered_and_replayed_unchanged) ... [2026-10-13 11:54:24,590] WARNING in app: payment declined order=1 upstream_detail='no'
+ok
+test_payment_declined_422_clean_detail (tests.test_app.PaymentAndRetry.test_payment_declined_422_clean_detail) ... [2026-10-13 11:54:24,592] WARNING in app: payment declined order=1 upstream_detail='bank 4111 insufficient funds acct 99'
+ok
+test_unexpected_exception_is_clean_500 (tests.test_app.PaymentAndRetry.test_unexpected_exception_is_clean_500) ... ok
+test_4xx_is_never_retried (tests.test_app.PaymentClientRetries.test_4xx_is_never_retried) ... ok
+test_same_idempotency_key_on_every_attempt (tests.test_app.PaymentClientRetries.test_same_idempotency_key_on_every_attempt) ... ok
+test_timeout_is_retried_then_unavailable (tests.test_app.PaymentClientRetries.test_timeout_is_retried_then_unavailable) ... ok
+test_cancel_unknown_order_404 (tests.test_app.StatusMap.test_cancel_unknown_order_404) ... ok
+test_head_works_on_get_resources (tests.test_app.StatusMap.test_head_works_on_get_resources) ... ok
+test_illegal_transition_409 (tests.test_app.StatusMap.test_illegal_transition_409) ... ok
+test_location_points_at_new_order (tests.test_app.StatusMap.test_location_points_at_new_order) ... ok
+test_missing_auth_401 (tests.test_app.StatusMap.test_missing_auth_401) ... ok
+test_no_200_with_ok_false_anywhere (tests.test_app.StatusMap.test_no_200_with_ok_false_anywhere) ... ok
+test_patch_and_delete_are_405_with_allow (tests.test_app.StatusMap.test_patch_and_delete_are_405_with_allow) ... ok
+test_unknown_order_404 (tests.test_app.StatusMap.test_unknown_order_404) ... ok
+test_unknown_url_404_is_problem_json (tests.test_app.StatusMap.test_unknown_url_404_is_problem_json) ... ok
+test_address_required (tests.test_app.Validation.test_address_required) ... ok
+test_all_errors_collected_not_just_first (tests.test_app.Validation.test_all_errors_collected_not_just_first) ... ok
+test_bad_query_params_422_all_at_once (tests.test_app.Validation.test_bad_query_params_422_all_at_once) ... ok
+test_empty_cart_422 (tests.test_app.Validation.test_empty_cart_422) ... ok
+test_foreign_address_422 (tests.test_app.Validation.test_foreign_address_422) ... ok
+test_json_array_body_is_400 (tests.test_app.Validation.test_json_array_body_is_400) ... ok
+test_malformed_json_is_400_not_422 (tests.test_app.Validation.test_malformed_json_is_400_not_422) ... ok
+test_missing_body_is_400 (tests.test_app.Validation.test_missing_body_is_400) ... ok
+test_nothing_done_when_invalid (tests.test_app.Validation.test_nothing_done_when_invalid) ... ok
+test_quantity_zero_negative_float_and_bool (tests.test_app.Validation.test_quantity_zero_negative_float_and_bool) ... ok
+test_two_bad_fields_reported_at_once (tests.test_app.Validation.test_two_bad_fields_reported_at_once) ... ok
+test_unavailable_item_422_lists_each (tests.test_app.Validation.test_unavailable_item_422_lists_each) ... ok
+test_wrong_content_type_415 (tests.test_app.Validation.test_wrong_content_type_415) ... ok
+
+----------------------------------------------------------------------
+Ran 51 tests in 0.065s
+
+OK
