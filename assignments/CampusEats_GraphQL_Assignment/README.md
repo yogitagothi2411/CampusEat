@@ -1,12 +1,12 @@
 # CampusEats GraphQL — Assignment 7
 
 ## Team details
-- Name(s): [Add team member name(s)]
-- Roll number(s): [Add roll number(s)]
-- GitHub repository: [Paste repository URL]
-- Demonstration video: [Paste Google Drive link]
-- Before screenshot: [Add screenshot]
-- After screenshot: [Add screenshot]
+-Team 23 – Yogita Gothi (20251651107), 
+           Janvi Goud (20251651047), 
+           Shreya Verma (20251651086), 
+           Sonali Choudhary (20251651088)
+- GitHub repository: [(https://github.com/yogitagothi2411/CampusEat)]
+
 
 ## 1. Which CampusEats service did you pick?
 We picked the **Menu/Dishes service**. It lists campus food dishes with their ID, name, price, and availability, and lets a client add a new dish.
