@@ -1,0 +1,28 @@
+{
+  "name": "campuseats-rest-api",
+  "version": "1.0.0",
+  "description": "CampusEats Menu/Catalogue REST API Service - CS543 Web Services Assignment 8",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"cyan.bold,magenta.bold\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "node --watch backend/server.js",
+    "dev:frontend": "node --watch frontend/server.js",
+    "test": "node test-api.js"
+  },
+  "keywords": [
+    "campuseats",
+    "rest-api",
+    "express",
+    "web-services"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

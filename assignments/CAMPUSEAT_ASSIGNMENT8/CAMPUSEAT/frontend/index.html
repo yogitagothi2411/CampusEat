@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusEats | Menu Catalogue REST API</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand">
+        <span class="brand-icon">🍔</span>
+        <div>
+          <h1 class="brand-title">CampusEats</h1>
+          <p class="brand-subtitle">Menu & Catalogue Service · CS543 Assignment 8</p>
+        </div>
+      </div>
+      <div class="nav-status">
+        <span class="status-indicator"></span>
+        <span class="status-text" id="server-status">API Connected: /items</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Notice / Assignment Banner -->
+    <section class="info-card">
+      <div class="info-header">
+        <span class="badge badge-primary">Assignment 8 of 12</span>
+        <span class="badge badge-secondary">Node.js + Express REST API</span>
+      </div>
+      <p class="info-desc">
+        This frontend interfaces directly with the <strong>CampusEats Menu/Catalogue REST API</strong>.
+        Demonstrating <code>GET /items</code> (list), <code>GET /items/:id</code> (fetch single with 404), and <code>POST /items</code> (create with 201 &amp; 422 validation).
+      </p>
+    </section>
+
+    <!-- Two Column Action Layout -->
+    <div class="grid-layout">
+
+      <!-- Column 1: Add New Record Form (POST /items) -->
+      <section class="card form-card">
+        <div class="card-header">
+          <div class="header-icon post-icon">➕</div>
+          <div>
+            <h2 class="card-title">Add New Menu Item</h2>
+            <p class="card-subtitle">Endpoint: <code class="endpoint-post">POST /items</code></p>
+          </div>
+        </div>
+
+        <form id="create-item-form">
+          <div class="form-group">
+            <label for="item-name">Item Name <span class="required">*</span></label>
+            <input 
+              type="text" 
+              id="item-name" 
+              name="name" 
+              placeholder="e.g. Masala Dosa, Cold Coffee" 
+              required
+              autocomplete="off"
+            />
+            <span class="field-hint">Required string field</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="item-price">Price (₹) <span class="required">*</span></label>
+              <input 
+                type="number" 
+                id="item-price" 
+                name="price" 
+                placeholder="e.g. 80" 
+                min="0" 
+                step="any"
+                required
+              />
+              <span class="field-hint">Required positive number</span>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="item-category">Category</label>
+              <select id="item-category" name="category">
+                <option value="Snacks">Snacks</option>
+                <option value="Fast Food">Fast Food</option>
+                <option value="Beverages">Beverages</option>
+                <option value="Main Course">Main Course</option>
+                <option value="Dessert">Dessert</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label class="toggle-label">
+              <input type="checkbox" id="item-available" name="available" checked />
+              <span class="custom-checkbox"></span>
+              Available for immediate order
+            </label>
+          </div>
+
+          <button type="submit" id="submit-btn" class="btn btn-primary">
+            <span>Create Item</span>
+            <span class="btn-subtext">POST /items (201)</span>
+          </button>
+        </form>
+
+        <!-- Form Response Feedback Alert -->
+        <div id="form-feedback" class="feedback-alert hidden"></div>
+      </section>
+
+      <!-- Column 2: Fetch Single Item by ID (GET /items/:id) -->
+      <section class="card fetch-card">
+        <div class="card-header">
+          <div class="header-icon get-icon">🔍</div>
+          <div>
+            <h2 class="card-title">Fetch Item by ID</h2>
+            <p class="card-subtitle">Endpoint: <code class="endpoint-get">GET /items/:id</code></p>
+          </div>
+        </div>
+
+        <p class="card-desc">Tests reading <code>req.params.id</code> with <strong>200 OK</strong> or <strong>404 Not Found</strong> handling.</p>
+
+        <form id="fetch-one-form" class="search-form">
+          <div class="search-input-group">
+            <input 
+              type="number" 
+              id="search-id" 
+              placeholder="Enter ID (e.g. 1, 2, 99)" 
+              min="1" 
+              required
+            />
+            <button type="submit" class="btn btn-secondary">Fetch Item</button>
+          </div>
+        </form>
+
+        <div id="fetch-result" class="fetch-result-box">
+          <p class="placeholder-text">Enter an ID above or click any item in the table to test <code>GET /items/:id</code></p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Full Width: Live Catalogue Table (GET /items) -->
+    <section class="card table-card">
+      <div class="card-header space-between">
+        <div class="header-left">
+          <div class="header-icon list-icon">📋</div>
+          <div>
+            <h2 class="card-title">Menu Catalogue Items</h2>
+            <p class="card-subtitle">Endpoint: <code class="endpoint-get">GET /items</code> · In-memory Array</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span id="item-count-badge" class="pill-counter">0 items</span>
+          <button id="refresh-btn" class="btn btn-sm btn-outline">🔄 Refresh List</button>
+          <button id="reset-btn" class="btn btn-sm btn-ghost" title="Reset to initial 4 seed records">⏮ Reset Seeds</button>
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <div class="table-container">
+        <table class="items-table" id="items-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Item Name</th>
+              <th>Category</th>
+              <th>Price</th>
+              <th>Availability</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="items-tbody">
+            <tr>
+              <td colspan="6" class="loading-state">Loading catalogue items from GET /items...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Technical Rubric & Route Reference Card -->
+    <footer class="card api-docs-card">
+      <h3 class="docs-title">📘 REST API Implementation Reference</h3>
+      <div class="docs-grid">
+        <div class="doc-item">
+          <div class="doc-method get">GET</div>
+          <div class="doc-details">
+            <code>/items</code>
+            <p>Fetches full catalogue array. Returns <span class="status-badge s200">200 OK</span>.</p>
+          </div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-method get">GET</div>
+          <div class="doc-details">
+            <code>/items/:id</code>
+            <p>Reads <code>req.params.id</code>. Returns <span class="status-badge s200">200 OK</span> or <span class="status-badge s404">404 Not Found</span>.</p>
+          </div>
+        </div>
+        <div class="doc-item">
+          <div class="doc-method post">POST</div>
+          <div class="doc-details">
+            <code>/items</code>
+            <p>Reads <code>req.body</code> via <code>express.json()</code>. Returns <span class="status-badge s201">201 Created</span> or <span class="status-badge s422">422 Unprocessable</span>.</p>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
